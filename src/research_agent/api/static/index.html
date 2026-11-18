@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research Agent</title>
+<style>
+  :root { --bg:#f7f7f5; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#e3e3de; --accent:#2f5d50; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --fg:#ececea; --muted:#9a9a94; --card:#1f1f1d; --line:#33332f; --accent:#7fbfa9; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  textarea, input[type=text] { width:100%; font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; }
+  button { font:inherit; border:1px solid var(--accent); background:var(--accent); color:var(--card); border-radius:8px; padding:7px 14px; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .muted { color:var(--muted); font-size:13px; }
+  #log { font:12px/1.5 ui-monospace, monospace; max-height:260px; overflow:auto; white-space:pre-wrap; }
+  #report { white-space:pre-wrap; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Research Agent <span class="muted">· local Ollama + LangGraph</span></h1>
+
+  <section class="card">
+    <textarea id="q" rows="2" placeholder="Ask a research question…">How does retrieval-augmented generation reduce hallucinations?</textarea>
+    <div class="row">
+      <button id="go">Research</button>
+      <label class="muted"><input type="checkbox" id="auto"> auto-approve plan</label>
+      <span id="status" class="muted"></span>
+    </div>
+  </section>
+
+  <section id="planCard" class="card hidden">
+    <strong>Review the plan</strong> <span class="muted">(graph paused at <code>interrupt()</code>; edit lines to change sub-questions)</span>
+    <textarea id="plan" rows="4" style="margin-top:8px"></textarea>
+    <input type="text" id="feedback" placeholder="Feedback for a re-plan (optional)" style="margin-top:8px">
+    <div class="row">
+      <button data-action="approve">Approve</button>
+      <button data-action="edit" class="secondary">Use edited plan</button>
+      <button data-action="replan" class="secondary">Re-plan with feedback</button>
+      <button data-action="reject" class="secondary">Reject</button>
+    </div>
+  </section>
+
+  <section class="card"><strong>Report</strong><div id="report" class="muted">—</div></section>
+  <section class="card"><strong>Events</strong><div id="log" class="muted"></div></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let threadId = null, originalPlan = [];
+
+function log(line) { $("log").textContent += line + "\n"; $("log").scrollTop = 1e9; }
+function setBusy(b) { $("go").disabled = b; document.querySelectorAll("#planCard button").forEach(x => x.disabled = b); }
+
+// Minimal SSE-over-fetch reader (EventSource only supports GET).
+async function streamSSE(url, body) {
+  setBusy(true);
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) { log(`HTTP ${res.status}: ${await res.text()}`); setBusy(false); return; }
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const raw = buf.slice(0, i); buf = buf.slice(i + 2);
+      let event = "message", data = "";
+      for (const l of raw.split("\n")) {
+        if (l.startsWith("event:")) event = l.slice(6).trim();
+        else if (l.startsWith("data:")) data += l.slice(5).trim();
+      }
+      if (data) handle(event, JSON.parse(data));
+    }
+  }
+  setBusy(false);
+}
+
+function handle(event, data) {
+  if (event === "thread") { threadId = data.thread_id; log(`thread ${threadId}`); }
+  else if (event === "token") {
+    if ($("report").dataset.streaming !== "1") { $("report").textContent = ""; $("report").dataset.streaming = "1"; $("report").classList.remove("muted"); }
+    $("report").textContent += data.text;
+  }
+  else if (event === "update") {
+    const { node, ...rest } = data; log(`▸ ${node} ${JSON.stringify(rest).slice(0, 300)}`);
+    if (node === "write") $("report").dataset.streaming = "0";
+  }
+  else if (event === "interrupt") {
+    originalPlan = data[0].value.plan; $("plan").value = originalPlan.join("\n");
+    $("planCard").classList.remove("hidden"); $("status").textContent = "waiting for your approval";
+  }
+  else if (event === "done") {
+    $("status").textContent = data.status;
+    if (data.report) { $("report").textContent = data.report; $("report").classList.remove("muted"); }
+    if (data.review) log(`judge score ${data.review.score}/5 after ${data.revision} revision(s)`);
+  }
+  else if (event === "error") { log(`ERROR ${data.error}: ${data.detail}`); $("status").textContent = "error"; }
+}
+
+$("go").onclick = () => {
+  $("log").textContent = ""; $("report").textContent = "…"; $("report").dataset.streaming = "0";
+  $("planCard").classList.add("hidden"); $("status").textContent = "running";
+  streamSSE("/research", { question: $("q").value, auto_approve: $("auto").checked });
+};
+
+document.querySelectorAll("#planCard button").forEach(btn => btn.onclick = () => {
+  const action = btn.dataset.action, body = { action };
+  if (action === "edit") body.sub_questions = $("plan").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (action === "replan") body.feedback = $("feedback").value;
+  $("planCard").classList.add("hidden"); $("status").textContent = "running";
+  streamSSE(`/research/${threadId}/resume`, body);
+});
+</script>
+</body>
+</html>
