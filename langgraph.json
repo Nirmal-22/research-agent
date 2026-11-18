@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "research_agent": "./src/research_agent/deps.py:make_graph"
+  }
+}
