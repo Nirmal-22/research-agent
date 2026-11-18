@@ -94,6 +94,7 @@ auto-approved and the web off, then scores each report:
 
 Results land in `evals/results/<timestamp>.json`. Use `--judge-model` to judge with a
 different model family (this reduces self-preference), and `--web` to include web tools.
+On a small machine, run it in chunks with `--start N --limit 2` (each example takes ~30-60 s).
 
 ## Lessons learned building this with a 4B model
 

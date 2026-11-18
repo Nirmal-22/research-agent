@@ -72,7 +72,7 @@ async def run(args: argparse.Namespace) -> int:
         json.loads(line)
         for line in (ROOT / "evals/dataset.jsonl").read_text().splitlines()
         if line.strip()
-    ][: args.limit]
+    ][args.start :][: args.limit]
     judge_llm = get_chat_model(
         settings.model_copy(
             update={"chat_model": args.judge_model or settings.chat_model, "temperature": 0.0}
@@ -149,6 +149,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--web", action="store_true", help="enable web tools (slower, less stable)")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--start", type=int, default=0, help="skip the first N examples")
     p.add_argument("--judge-model", default=None)
     return asyncio.run(run(p.parse_args()))
 
