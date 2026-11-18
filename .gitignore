@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+data/chroma/
+data/*.sqlite*
+*.sqlite
+*.sqlite-*
+evals/results/
+.langgraph_api/
