@@ -33,8 +33,8 @@ Add a short comment where a LangChain/LangGraph concept first appears, so the co
   server took 5.4 GB of WSL's 7 GB RAM and the OOM killer crashed the session repeatedly. On
   Windows it uses about 2 GB. `make ollama` (→ `scripts/ollama-up.sh`) starts the Windows
   server if it's down. Starting the tray app from WSL does not bring the server up; the script
-  uses `Start-Process ollama.exe serve`. A Linux copy still sits in `~/.local/ollama` as an
-  unused fallback.
+  uses `Start-Process ollama.exe serve`. The old Linux copy (`~/.local/ollama`, `~/.ollama`)
+  was deleted on 2026-11-19; don't reinstall it.
 - The PC has 14.7 GB RAM in total and Windows is often down to 1-2 GB free, so keep runs
   modest: evals in chunks (`--start N --limit 2`), no parallel heavy jobs.
 - A dead localhost port in WSL *hangs* rather than refusing, so always pass `-m` to curl.

@@ -3,8 +3,8 @@
 #
 # On WSL the server should be the *Windows* Ollama app: running the model inside WSL took
 # 5.4 GB of the VM's 7 GB RAM and got it OOM-killed. The Windows app uses the GPU directly
-# and is reachable from WSL on localhost (mirrored networking). The Linux binary is only a
-# fallback for machines without the Windows app.
+# and is reachable from WSL on localhost (mirrored networking). On native Linux/macOS the
+# script starts a locally installed `ollama` instead.
 set -euo pipefail
 
 URL="http://localhost:11434"
@@ -19,10 +19,13 @@ if ! up; then
     (cd /mnt/c && timeout 30 powershell.exe -NoProfile -Command \
       "Start-Process -WindowStyle Hidden -FilePath (Join-Path \$env:LOCALAPPDATA 'Programs\Ollama\ollama.exe') -ArgumentList 'serve'" \
       >/dev/null 2>&1) || true
+  elif command -v ollama >/dev/null && ! grep -qi microsoft /proc/version; then
+    # Native Linux/macOS (not WSL): run the server locally.
+    echo "starting Ollama"
+    setsid nohup ollama serve >"$HOME/.ollama-serve.log" 2>&1 </dev/null &
   else
-    linux_bin=$(command -v ollama || echo "$HOME/.local/ollama/bin/ollama")
-    echo "starting Ollama inside Linux ($linux_bin)"
-    setsid nohup "$linux_bin" serve >"$HOME/.ollama-serve.log" 2>&1 </dev/null &
+    echo "No Ollama server found. On WSL install the Windows app: winget install Ollama.Ollama" >&2
+    exit 1
   fi
   for _ in $(seq 1 20); do up && break; sleep 2; done
 fi
