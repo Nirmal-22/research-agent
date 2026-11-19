@@ -27,14 +27,19 @@ Add a short comment where a LangChain/LangGraph concept first appears, so the co
 - Python 3.12.10 (pyenv), Node 24. `sudo` needs a password, so install everything user-level.
 - GPU: RTX 5070 Laptop, 8 GB VRAM. WSL RAM is about 7 GB.
 - `gh` is logged in as **Nirmal-22**. Remote: https://github.com/Nirmal-22/research-agent (private).
-- **Ollama** v0.40.16 is installed in `~/.local/ollama` (binary: `~/.local/ollama/bin/ollama`),
-  without sudo; models `qwen3:4b-instruct` + `nomic-embed-text` are pulled. If it's missing, repeat the
-  install: `gh release download v0.40.16 -R ollama/ollama -p 'ollama-linux-amd64.tar.zst'`, then
-  extract the archive into `~/.local/ollama` with Python `zstandard` + `tarfile`, because there's no
-  `zstd` binary. **Background processes (ollama serve, uvicorn) die when a Claude Code session
-  ends**, so check `curl -m 2 localhost:11434/api/version` at session start and run `make ollama`
-  (starts it with setsid). Note: a dead localhost port in WSL *hangs* rather than refusing, so
-  always pass `-m` to curl. Never `pkill -f <pattern>` that also matches your own shell command.
+- **Ollama runs as the Windows app** (v0.40.16, installed with `winget install Ollama.Ollama`),
+  with `qwen3:4b-instruct` + `nomic-embed-text` pulled there. WSL reaches it on
+  `localhost:11434` (mirrored networking). **Never run `ollama serve` inside WSL**: the model
+  server took 5.4 GB of WSL's 7 GB RAM and the OOM killer crashed the session repeatedly. On
+  Windows it uses about 2 GB. `make ollama` (→ `scripts/ollama-up.sh`) starts the Windows
+  server if it's down. Starting the tray app from WSL does not bring the server up; the script
+  uses `Start-Process ollama.exe serve`. A Linux copy still sits in `~/.local/ollama` as an
+  unused fallback.
+- The PC has 14.7 GB RAM in total and Windows is often down to 1-2 GB free, so keep runs
+  modest: evals in chunks (`--start N --limit 2`), no parallel heavy jobs.
+- A dead localhost port in WSL *hangs* rather than refusing, so always pass `-m` to curl.
+  Never `pkill -f <pattern>` that also matches your own shell command. Background processes
+  started from a Claude Code session (uvicorn) die when the session ends.
 - **uv** is installed with `pip install --user uv` (→ `~/.local/bin/uv`). Use `uv sync` and
   `uv run`. If uv is missing, reinstall it the same way.
 
@@ -83,18 +88,21 @@ threads, interrupt/human-in-the-loop, streaming, evals/LLM-as-judge, MCP, observ
 Then a "next modules" list: LangSmith or self-hosted Langfuse tracing, pgvector or Qdrant, Redis caching,
 guardrails, reranking, hybrid search, prompt versioning, vLLM serving, DSPy, OpenTelemetry, CI with GitHub Actions.
 
-## Status (2026-11-18)
+## Status (2026-11-19)
 Built and verified against real Ollama: every module in the architecture above, plus README.md
 (including "lessons learned") and LEARNING.md. `make test` = 24 unit tests (no Ollama), `make
 test-integration` = 2 (real Ollama + MCP over stdio). Verified end to end: CLI (KB-only and web),
 API SSE interrupt → server restart → resume with an edited plan, and MCP stdio.
+Evals ran to completion on 2026-11-18 (6/6, results table in README; self-judged, so lenient).
+Ollama moved from WSL to the Windows app on 2026-11-19 after repeated OOM crashes; one CLI run
+verified against it.
 API changes found while building (they differ from older docs): mcp 2.x uses
 `mcp.server.mcpserver.MCPServer` (not FastMCP); `interrupt(value, response_schema=Model)`
 validates resume values; `astream(..., version="v2")` yields typed `{type, ns, data}` parts;
 `ainvoke(version="v2")` returns `GraphOutput(.value, .interrupts)`; no langchain-community, so
 loaders are hand-written.
-Remaining: run `make evals` to completion and record results in the README; optional
-LangGraph Studio (`langgraph-cli[inmem]`); CI.
+Remaining ideas: judge the evals with a different model family; harder eval questions; optional
+LangGraph Studio (`langgraph-cli[inmem]`).
 
 ## Commands
 `make install` · `make ollama` · `make ingest` · `make dev` (API on :8000) · `make test` · `make evals` · `make lint`

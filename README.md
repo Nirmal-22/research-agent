@@ -39,8 +39,10 @@ make test-integration # real Ollama: tool calling, structured output, MCP over s
 make evals            # eval suite (LLM-as-judge + deterministic checks)
 ```
 
-Ollama without sudo: the binary lives in `~/.local/ollama/bin/ollama` (see CLAUDE.md).
-`make ollama` starts it detached if it isn't already running.
+**On WSL, run Ollama as the Windows app, not inside WSL** (`winget install Ollama.Ollama`).
+Inside WSL the model server held 5.4 GB of the VM's 7 GB RAM and was OOM-killed mid-run; as a
+Windows app it uses about 2 GB of Windows RAM, and WSL reaches it on `localhost:11434`
+(mirrored networking). `make ollama` starts it if it's down and pulls both models.
 
 ## API
 
@@ -96,6 +98,21 @@ Results land in `evals/results/<timestamp>.json`. Use `--judge-model` to judge w
 different model family (this reduces self-preference), and `--web` to include web tools.
 On a small machine, run it in chunks with `--start N --limit 2` (each example takes ~30-60 s).
 
+Results on 2026-11-18 (`qwen3:4b-instruct` as both writer and judge, web off, 6 questions):
+
+| Metric | Result |
+|---|---|
+| Citations valid / present | 6/6 |
+| Key-fact recall | 1.00 |
+| Expected KB source retrieved | 6/6 |
+| Faithfulness (judge, 1-5) | 5.0 |
+| Relevance (judge, 1-5) | 5.0 |
+| Mean latency | 17.7 s |
+
+Read these as a smoke test, not a benchmark: the questions are answerable from four short
+documents written for this project, and the judge is the same 4B model that wrote the reports
+(lesson 6 below).
+
 ## Lessons learned building this with a 4B model
 
 These are real failures found while running against Ollama. Each one is fixed in the code:
@@ -118,6 +135,9 @@ These are real failures found while running against Ollama. Each one is fixed in
    section 5/5. That's why the evals add deterministic checks and support a separate judge.
 7. **The model invents citation numbers.** Out-of-range `[n]` markers are stripped, and the
    Sources section is built from tool artifacts instead of being written by the model.
+8. **The model server OOM-killed WSL.** `llama-server` grew to 5.4 GB of system RAM inside a
+   7 GB WSL VM even with the model fully on the GPU. Fix: run Ollama as the Windows app and
+   keep only the Python code in WSL. → [scripts/ollama-up.sh](scripts/ollama-up.sh)
 
 ## Project layout
 
@@ -127,7 +147,7 @@ src/research_agent/
   tools/web.py  tools/kb.py  rag/ingest.py
   graph/state.py  graph/prompts.py  graph/researcher.py  graph/graph.py
   api/main.py  api/static/index.html  mcp_server.py  cli.py
-data/docs/   evals/   tests/   langgraph.json   Makefile
+data/docs/   evals/   tests/   scripts/   langgraph.json   Makefile
 Dockerfile, docker-compose.yml   ← UNTESTED (no Docker in this WSL setup)
 ```
 

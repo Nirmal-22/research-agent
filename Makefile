@@ -1,5 +1,4 @@
-# All targets run without Docker. Ollama binary lives in ~/.local/ollama (see README).
-OLLAMA ?= $(shell command -v ollama 2>/dev/null || echo $(HOME)/.local/ollama/bin/ollama)
+# All targets run without Docker. On WSL, Ollama runs as the Windows app (see README).
 CHAT_MODEL ?= qwen3:4b-instruct
 EMBED_MODEL ?= nomic-embed-text
 
@@ -8,11 +7,8 @@ EMBED_MODEL ?= nomic-embed-text
 install:            ## install Python deps into .venv
 	uv sync
 
-ollama:             ## start ollama (if not running) and pull the models
-	@curl -sf -m 2 localhost:11434/api/version >/dev/null || \
-	  (setsid nohup $(OLLAMA) serve > $(HOME)/.local/ollama/serve.log 2>&1 < /dev/null & sleep 3)
-	$(OLLAMA) pull $(CHAT_MODEL)
-	$(OLLAMA) pull $(EMBED_MODEL)
+ollama:             ## make sure an Ollama server is up, then pull the models
+	@bash scripts/ollama-up.sh $(CHAT_MODEL) $(EMBED_MODEL)
 
 ingest:             ## index data/docs into Chroma (data/chroma)
 	uv run research-agent ingest
